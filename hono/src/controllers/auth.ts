@@ -1,4 +1,5 @@
 import { Context } from 'hono';
+import { getCookie, setCookie } from 'hono/cookie';
 import { AuthService } from '../services/auth';
 import { UserInput } from '../models/user';
 
@@ -7,6 +8,38 @@ export class AuthController {
 
   constructor() {
     this.authService = new AuthService();
+  }
+
+  async logout(c: Context) {
+    try {
+      // Cookieを削除
+      setCookie(c, 'auth_token', '', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 0, // 即時期限切れ
+        path: '/'
+      });
+      
+      setCookie(c, 'csrf_token', '', {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 0, // 即時期限切れ
+        path: '/'
+      });
+      
+      return c.json({ 
+        success: true, 
+        message: 'ログアウトしました' 
+      });
+    } catch (error) {
+      console.error('ログアウトエラー:', error);
+      return c.json({ 
+        success: false, 
+        message: 'サーバーエラーが発生しました' 
+      }, 500);
+    }
   }
 
   async register(c: Context) {
@@ -69,10 +102,22 @@ export class AuthController {
         }, 401);
       }
 
+      // AUTH トークンをHTTPOnlyクッキーに設定
+      if (result.token) {
+        const cookieOptions = this.authService.getSecureCookieOptions(true);
+        setCookie(c, 'auth_token', result.token, cookieOptions);
+      }
+
+      // CSRFトークンを非HTTPOnlyクッキーに設定
+      if (result.csrfToken) {
+        const csrfCookieOptions = this.authService.getSecureCookieOptions(false);
+        setCookie(c, 'csrf_token', result.csrfToken, csrfCookieOptions);
+      }
+
       return c.json({ 
         success: true, 
-        user: result.user, 
-        token: result.token 
+        user: result.user,
+        csrfToken: result.csrfToken
       });
     } catch (error) {
       console.error('ログインエラー:', error);

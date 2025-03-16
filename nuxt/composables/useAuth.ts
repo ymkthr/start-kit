@@ -25,8 +25,8 @@ export const useAuth = () => {
   /**
    * ログアウトを行う
    */
-  const logout = () => {
-    authStore.logout()
+  const logout = async () => {
+    await authStore.logout()
     router.push('/login')
   }
   

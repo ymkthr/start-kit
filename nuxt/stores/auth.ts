@@ -8,20 +8,20 @@ interface User {
 
 interface AuthState {
   user: User | null
-  token: string | null
+  csrfToken: string | null
   isAuthenticated: boolean
 }
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
     user: null,
-    token: null,
+    csrfToken: null,
     isAuthenticated: false
   }),
   
   getters: {
     getUser: (state) => state.user,
-    getToken: (state) => state.token,
+    getCsrfToken: (state) => state.csrfToken,
     isLoggedIn: (state) => state.isAuthenticated
   },
   
@@ -31,13 +31,8 @@ export const useAuthStore = defineStore('auth', {
       this.isAuthenticated = !!user
     },
     
-    setToken(token: string) {
-      this.token = token
-      // トークンをローカルストレージに保存
-      // セキュリティを考慮する場合は、Cookie(HttpOnly, Secure, SameSite)を使用する
-      if (process.client) {
-        localStorage.setItem('auth_token', token)
-      }
+    setCsrfToken(token: string) {
+      this.csrfToken = token
     },
     
     async login(email: string, password: string) {
@@ -47,7 +42,8 @@ export const useAuthStore = defineStore('auth', {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email, password }),
+          credentials: 'include'
         })
 
         const data = await response.json()
@@ -61,7 +57,10 @@ export const useAuthStore = defineStore('auth', {
           username: data.user.username,
           email: data.user.email
         })
-        this.setToken(data.token)
+        
+        if (data.csrfToken) {
+          this.setCsrfToken(data.csrfToken)
+        }
         
         return { success: true }
       } catch (error) {
@@ -77,7 +76,8 @@ export const useAuthStore = defineStore('auth', {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ username, email, password })
+          body: JSON.stringify({ username, email, password }),
+          credentials: 'include'
         })
 
         const data = await response.json()
@@ -93,48 +93,51 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     
-    logout() {
-      this.user = null
-      this.token = null
-      this.isAuthenticated = false
-      
-      // ローカルストレージからトークンを削除
-      if (process.client) {
-        localStorage.removeItem('auth_token')
+    async logout() {
+      try {
+        // サーバーにログアウトリクエストを送信
+        await fetch('http://localhost:3001/auth/logout', {
+          method: 'POST',
+          headers: {
+            'X-CSRF-Token': this.csrfToken || ''
+          },
+          credentials: 'include'
+        })
+      } catch (error) {
+        console.error('ログアウトエラー:', error)
+      } finally {
+        // ステートをリセット
+        this.user = null
+        this.csrfToken = null
+        this.isAuthenticated = false
       }
     },
     
     async checkAuth() {
       if (process.client) {
-        const token = localStorage.getItem('auth_token')
-        if (token) {
-          try {
-            // トークンを使用してユーザー情報を取得
-            const response = await fetch('http://localhost:3001/api/auth/me', {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            })
-            
-            if (response.ok) {
-              const data = await response.json()
-              if (data.success && data.user) {
-                this.setToken(token)
-                this.setUser({
-                  id: String(data.user.id),
-                  username: data.user.username,
-                  email: data.user.email
-                })
-                return
-              }
+        try {
+          // Cookieに保存されたトークンを使用してユーザー情報を取得
+          const response = await fetch('http://localhost:3001/api/auth/me', {
+            credentials: 'include'
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.user) {
+              this.setUser({
+                id: String(data.user.id),
+                username: data.user.username,
+                email: data.user.email
+              })
+              return
             }
-            
-            // トークンが無効な場合はログアウト
-            this.logout()
-          } catch (error) {
-            console.error('認証チェックエラー:', error)
-            this.logout()
           }
+          
+          // トークンが無効な場合はログアウト
+          this.logout()
+        } catch (error) {
+          console.error('認証チェックエラー:', error)
+          this.logout()
         }
       }
     }

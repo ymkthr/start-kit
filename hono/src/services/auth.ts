@@ -1,20 +1,48 @@
 import jwt from 'jsonwebtoken';
 import { UserModel, User, UserInput } from '../models/user';
+import * as crypto from 'crypto';
 
 export interface AuthResult {
   success: boolean;
   user?: Omit<User, 'password'>;
   token?: string;
+  csrfToken?: string;
   message?: string;
+}
+
+export interface CookieOptions {
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: 'strict' | 'lax' | 'none';
+  maxAge: number;
+  path: string;
 }
 
 export class AuthService {
   private userModel: UserModel;
   private jwtSecret: string;
+  private isProduction: boolean;
 
   constructor() {
     this.userModel = new UserModel();
     this.jwtSecret = process.env.JWT_SECRET || 'default_jwt_secret_key';
+    this.isProduction = process.env.NODE_ENV === 'production';
+  }
+
+  // セキュアCookieのオプションを生成
+  getSecureCookieOptions(httpOnly = true): CookieOptions {
+    return {
+      httpOnly,
+      secure: this.isProduction, // 本番環境ではtrueに設定
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 400, // 400日
+      path: '/'
+    };
+  }
+
+  // CSRFトークンを生成
+  generateCsrfToken(): string {
+    return crypto.randomBytes(32).toString('hex');
   }
 
   async register(userData: UserInput): Promise<AuthResult> {
@@ -69,6 +97,9 @@ export class AuthService {
 
       // JWTトークンを生成
       const token = this.generateToken(user);
+      
+      // CSRFトークンを生成
+      const csrfToken = this.generateCsrfToken();
 
       // パスワードを除外したユーザー情報
       const { password: _, ...userWithoutPassword } = user;
@@ -76,7 +107,8 @@ export class AuthService {
       return {
         success: true,
         user: userWithoutPassword as Omit<User, 'password'>,
-        token
+        token,
+        csrfToken
       };
     } catch (error) {
       console.error('ログインエラー:', error);
