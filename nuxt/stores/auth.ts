@@ -42,19 +42,26 @@ export const useAuthStore = defineStore('auth', {
     
     async login(email: string, password: string) {
       try {
-        // ここで実際のログインAPIを呼び出す（モック）
-        // 実際のアプリケーションでは、APIエンドポイントを呼び出す
+        const response = await fetch('http://localhost:3001/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, password })
+        })
+
+        const data = await response.json()
         
-        // モックレスポンス
-        const mockUser: User = {
-          id: '1',
-          username: 'testuser',
-          email: email
+        if (!data.success) {
+          return { success: false, error: data.message || 'ログインに失敗しました' }
         }
-        const mockToken = 'mock_jwt_token'
         
-        this.setUser(mockUser)
-        this.setToken(mockToken)
+        this.setUser({
+          id: String(data.user.id),
+          username: data.user.username,
+          email: data.user.email
+        })
+        this.setToken(data.token)
         
         return { success: true }
       } catch (error) {
@@ -65,10 +72,20 @@ export const useAuthStore = defineStore('auth', {
     
     async register(username: string, email: string, password: string) {
       try {
-        // ここで実際の登録APIを呼び出す（モック）
-        console.log('登録処理:', { username, email, password })
+        const response = await fetch('http://localhost:3001/auth/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, email, password })
+        })
+
+        const data = await response.json()
         
-        // モックレスポンス
+        if (!data.success) {
+          return { success: false, error: data.message || '登録に失敗しました' }
+        }
+        
         return { success: true }
       } catch (error) {
         console.error('登録エラー:', error)
@@ -91,17 +108,33 @@ export const useAuthStore = defineStore('auth', {
       if (process.client) {
         const token = localStorage.getItem('auth_token')
         if (token) {
-          // トークンの検証（実際のアプリケーションではAPIを呼び出す）
-          this.token = token
-          
-          // モックユーザー情報
-          const mockUser: User = {
-            id: '1',
-            username: 'testuser',
-            email: 'test@example.com'
+          try {
+            // トークンを使用してユーザー情報を取得
+            const response = await fetch('http://localhost:3001/api/auth/me', {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            })
+            
+            if (response.ok) {
+              const data = await response.json()
+              if (data.success && data.user) {
+                this.setToken(token)
+                this.setUser({
+                  id: String(data.user.id),
+                  username: data.user.username,
+                  email: data.user.email
+                })
+                return
+              }
+            }
+            
+            // トークンが無効な場合はログアウト
+            this.logout()
+          } catch (error) {
+            console.error('認証チェックエラー:', error)
+            this.logout()
           }
-          
-          this.setUser(mockUser)
         }
       }
     }
