@@ -1,19 +1,26 @@
+FROM node:22.14.0-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
 FROM node:22.14.0-alpine
 
 WORKDIR /app
 
-# 必要なパッケージをインストール
-RUN apk add --no-cache git
-
-# npmを最新バージョンにアップデート
-RUN npm install -g npm@latest
-
-# nuxtプロジェクトの依存関係をインストールするための準備
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
-# アプリケーションのソースコードをコピー
-COPY . .
+COPY --from=builder /app/.output ./.output
 
-# 開発サーバーを起動
-CMD ["npm", "run", "dev"]
+ENV HOST=0.0.0.0
+ENV PORT=3000
+EXPOSE 3000
+
+# 本番環境は NODE_ENV=production で npm start
+# 開発環境は NODE_ENV=development で npm run dev
+CMD ["sh", "-c", "if [ \"$NODE_ENV\" = \"production\" ]; then node .output/server/index.mjs; else npm run dev; fi"]
