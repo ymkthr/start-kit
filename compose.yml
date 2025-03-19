@@ -5,13 +5,37 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./nuxt:/app
-      - node_modules:/app/node_modules
     ports:
-      - "51080:3000"
+      - "3000:3000"
     environment:
       - HOST=0.0.0.0
       - PORT=3000
       - NODE_ENV=development
+    restart: unless-stopped
+
+  hono:
+    build:
+      context: ./hono
+      dockerfile: Dockerfile
+    volumes:
+      - ./hono:/app
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+    restart: unless-stopped
+  
+  postgresql:
+    image: postgres:17
+    volumes:
+      - postgresql:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    restart: unless-stopped
 
 volumes:
-  node_modules:
+  postgresql:
